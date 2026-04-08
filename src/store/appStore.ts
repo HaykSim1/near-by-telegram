@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type {
   Activity,
   ActivityCategory,
@@ -88,16 +89,38 @@ export interface AppState {
   getResponsesForActivity: (activityId: string) => ActivityResponse[];
 }
 
+/** JSON-safe slice written to localStorage */
+type PersistedSlice = {
+  onboardingComplete: boolean;
+  viewerDistrict: string;
+  activities: Activity[];
+  responses: ActivityResponse[];
+  skippedActivityIds: string[];
+  profiles: Record<number, ExtendedProfile>;
+  feedFilters: {
+    maxDistanceKm: number;
+    gender: FeedGenderFilter;
+    timeScope: TimeScope | "both";
+    categories: ActivityCategory[];
+  };
+};
+
 const now = Date.now();
 const bootUser = getTelegramUser();
 const demoData = isDemoDataEnabled();
 
-export const useAppStore = create<AppState>((set, get) => ({
+const buildInitialDataSlice = (): Pick<
+  AppState,
+  | "activities"
+  | "responses"
+  | "profiles"
+  | "skippedActivityIds"
+  | "feedFilters"
+  | "onboardingComplete"
+  | "viewerDistrict"
+> => ({
   onboardingComplete: false,
-  telegramUser: bootUser,
   viewerDistrict: "Kentron",
-  mainTab: "feed",
-  overlay: null,
   activities: demoData ? createSeedActivities(now) : [],
   responses: demoData ? createSeedResponses(now) : [],
   skippedActivityIds: new Set(),
@@ -108,6 +131,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     gender: "any",
     timeScope: "both",
   },
+});
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+  telegramUser: bootUser,
+  mainTab: "feed",
+  overlay: null,
+  ...buildInitialDataSlice(),
 
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
   setViewerDistrict: (district) => set({ viewerDistrict: district }),
@@ -241,7 +273,72 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   getResponsesForActivity: (activityId) =>
     get().responses.filter((r) => r.activityId === activityId),
-}));
+}),
+    {
+      name: "nearby-now-v1",
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state): PersistedSlice => ({
+        onboardingComplete: state.onboardingComplete,
+        viewerDistrict: state.viewerDistrict,
+        activities: state.activities,
+        responses: state.responses,
+        skippedActivityIds: Array.from(state.skippedActivityIds),
+        profiles: state.profiles,
+        feedFilters: {
+          maxDistanceKm: state.feedFilters.maxDistanceKm,
+          gender: state.feedFilters.gender,
+          timeScope: state.feedFilters.timeScope,
+          categories: Array.from(state.feedFilters.categories),
+        },
+      }),
+      merge: (persisted, current) => {
+        if (!persisted || typeof persisted !== "object") {
+          return current;
+        }
+        const p = persisted as Partial<PersistedSlice>;
+        const feed = p.feedFilters;
+        return {
+          ...current,
+          onboardingComplete: p.onboardingComplete ?? current.onboardingComplete,
+          viewerDistrict: p.viewerDistrict ?? current.viewerDistrict,
+          activities: Array.isArray(p.activities)
+            ? p.activities
+            : current.activities,
+          responses: Array.isArray(p.responses)
+            ? p.responses
+            : current.responses,
+          skippedActivityIds: new Set(
+            Array.isArray(p.skippedActivityIds) ? p.skippedActivityIds : [],
+          ),
+          profiles:
+            p.profiles && typeof p.profiles === "object"
+              ? (p.profiles as Record<number, ExtendedProfile>)
+              : current.profiles,
+          feedFilters: {
+            maxDistanceKm: feed?.maxDistanceKm ?? current.feedFilters.maxDistanceKm,
+            gender: feed?.gender ?? current.feedFilters.gender,
+            timeScope: feed?.timeScope ?? current.feedFilters.timeScope,
+            categories: new Set(
+              Array.isArray(feed?.categories) ? feed.categories : [],
+            ),
+          },
+          telegramUser: current.telegramUser,
+          mainTab: current.mainTab,
+          overlay: null,
+        };
+      },
+      onRehydrateStorage: () => {
+        return (_state, error) => {
+          if (error) return;
+          queueMicrotask(() => {
+            useAppStore.getState().expireOldActivities();
+          });
+        };
+      },
+    },
+  ),
+);
 
 export function buildActivityFromForm(args: {
   authorId: number;

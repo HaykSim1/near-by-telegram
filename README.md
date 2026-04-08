@@ -3,7 +3,7 @@
 Telegram Mini App MVP: find people nearby for a **specific purpose right now** (coffee, walk, coworking, sport, help, etc.)—**not** a dating app.
 
 - **Stack:** Vite, React 19, TypeScript, Zustand, [`@twa-dev/sdk`](https://github.com/twa-dev/sdk)
-- **Data:** in-memory only (refresh resets). **Demo seed** (sample people + activities) runs in `vite dev` only; **`npm run build` / production has an empty feed** unless you opt in.
+- **Data:** activities, responses, profile edits, onboarding, and filters are **saved in the device** (`localStorage`) so they survive closing the Mini App. Clearing site data or another device won’t have that state. **Demo seed** runs in `vite dev` only; production starts with an empty feed until people post (unless `VITE_USE_DEMO_DATA=true`).
 - **Docs:** product and flows live in [`docs/`](docs/README.md)
 
 ### Demo data (env)
