@@ -24,6 +24,7 @@ import {
 import { getTelegramUser } from "../lib/telegram";
 import { formatDistanceKm } from "../lib/distance";
 import { filterActivitiesForFeed } from "../lib/feedFilter";
+import { defaultFeedFilters, normalizeFeedFilters } from "../lib/normalizeFeedFilters";
 import { isDemoDataEnabled } from "../lib/demoData";
 
 function seedProfiles(): Record<number, ExtendedProfile> {
@@ -75,6 +76,7 @@ export interface AppState {
   setMaxDistanceKm: (km: number) => void;
   setFeedGender: (g: FeedGenderFilter) => void;
   setFeedTimeScope: (t: TimeScope | "both") => void;
+  resetFeedFilters: () => void;
   skipActivity: (activityId: string) => void;
   respondToActivity: (activityId: string, message?: string) => boolean;
   publishActivity: (input: Omit<Activity, "id" | "createdAt" | "status">) => void;
@@ -125,12 +127,7 @@ const buildInitialDataSlice = (): Pick<
   responses: demoData ? createSeedResponses(now) : [],
   skippedActivityIds: new Set(),
   profiles: demoData ? seedProfiles() : profilesForLiveUser(bootUser),
-  feedFilters: {
-    categories: new Set(),
-    maxDistanceKm: 10,
-    gender: "any",
-    timeScope: "both",
-  },
+  feedFilters: defaultFeedFilters(),
 });
 
 export const useAppStore = create<AppState>()(
@@ -151,13 +148,22 @@ export const useAppStore = create<AppState>()(
   closeOverlay: () => set({ overlay: null }),
 
   setFeedCategories: (categories) =>
-    set((s) => ({ feedFilters: { ...s.feedFilters, categories } })),
+    set((s) => ({
+      feedFilters: normalizeFeedFilters({ ...s.feedFilters, categories }),
+    })),
   setMaxDistanceKm: (maxDistanceKm) =>
-    set((s) => ({ feedFilters: { ...s.feedFilters, maxDistanceKm } })),
+    set((s) => ({
+      feedFilters: normalizeFeedFilters({ ...s.feedFilters, maxDistanceKm }),
+    })),
   setFeedGender: (gender) =>
-    set((s) => ({ feedFilters: { ...s.feedFilters, gender } })),
+    set((s) => ({
+      feedFilters: normalizeFeedFilters({ ...s.feedFilters, gender }),
+    })),
   setFeedTimeScope: (timeScope) =>
-    set((s) => ({ feedFilters: { ...s.feedFilters, timeScope } })),
+    set((s) => ({
+      feedFilters: normalizeFeedFilters({ ...s.feedFilters, timeScope }),
+    })),
+  resetFeedFilters: () => set({ feedFilters: defaultFeedFilters() }),
 
   skipActivity: (activityId) =>
     set((s) => {
@@ -315,14 +321,14 @@ export const useAppStore = create<AppState>()(
             p.profiles && typeof p.profiles === "object"
               ? (p.profiles as Record<number, ExtendedProfile>)
               : current.profiles,
-          feedFilters: {
+          feedFilters: normalizeFeedFilters({
             maxDistanceKm: feed?.maxDistanceKm ?? current.feedFilters.maxDistanceKm,
             gender: feed?.gender ?? current.feedFilters.gender,
             timeScope: feed?.timeScope ?? current.feedFilters.timeScope,
             categories: new Set(
               Array.isArray(feed?.categories) ? feed.categories : [],
             ),
-          },
+          }),
           telegramUser: current.telegramUser,
           mainTab: current.mainTab,
           overlay: null,

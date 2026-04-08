@@ -9,6 +9,7 @@ export function FilterBar() {
   const setMaxDistanceKm = useAppStore((s) => s.setMaxDistanceKm);
   const setFeedGender = useAppStore((s) => s.setFeedGender);
   const setFeedTimeScope = useAppStore((s) => s.setFeedTimeScope);
+  const resetFeedFilters = useAppStore((s) => s.resetFeedFilters);
 
   const toggleCategory = (c: ActivityCategory) => {
     const next = new Set(feedFilters.categories);
@@ -21,7 +22,16 @@ export function FilterBar() {
     <div className="filter-bar">
       <div className="filter-section">
         <div className="filter-label">Category</div>
+        <p className="filter-hint">
+          Tap categories to narrow the list. <strong>All</strong> shows every category.
+        </p>
         <div className="filter-row">
+          <Chip
+            selected={feedFilters.categories.size === 0}
+            onClick={() => setFeedCategories(new Set())}
+          >
+            All
+          </Chip>
           {CATEGORY_ORDER.map((c) => (
             <Chip
               key={c}
@@ -92,6 +102,11 @@ export function FilterBar() {
             </Chip>
           ))}
         </div>
+      </div>
+      <div className="filter-reset-row">
+        <button type="button" className="filter-reset-btn" onClick={resetFeedFilters}>
+          Reset all filters
+        </button>
       </div>
     </div>
   );

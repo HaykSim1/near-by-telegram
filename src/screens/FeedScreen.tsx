@@ -16,6 +16,7 @@ export function FeedScreen() {
   const skipActivity = useAppStore((s) => s.skipActivity);
   const openDetail = useAppStore((s) => s.openDetail);
   const openCreate = useAppStore((s) => s.openCreate);
+  const resetFeedFilters = useAppStore((s) => s.resetFeedFilters);
 
   useEffect(() => {
     expireOldActivities();
@@ -45,15 +46,42 @@ export function FeedScreen() {
     tick,
   ]);
 
+  const othersActive = useMemo(() => {
+    const t = Date.now();
+    return activities.some(
+      (a) =>
+        a.authorId !== telegramUser.id &&
+        a.status === "active" &&
+        a.expiresAt >= t,
+    );
+  }, [activities, telegramUser.id, tick]);
+
   return (
     <>
       <ScreenHeader title="Nearby now" />
       <FilterBar />
       {list.length === 0 ? (
-        <p className="empty-state">
-          No activities match your filters. Try widening distance or categories—or
-          create one.
-        </p>
+        <div className="empty-state">
+          {!othersActive && activities.length > 0 ? (
+            <p>
+              Only your activities are here for now—they stay under{" "}
+              <strong>My activities</strong>. Others will appear in this feed when
+              they post nearby.
+            </p>
+          ) : !othersActive ? (
+            <p>No activities yet. Be the first to post something nearby.</p>
+          ) : (
+            <>
+              <p>
+                Nothing matches your filters (or you skipped every card). Try{" "}
+                <button type="button" className="filter-reset-btn" onClick={resetFeedFilters}>
+                  reset filters
+                </button>{" "}
+                or widen distance / time.
+              </p>
+            </>
+          )}
+        </div>
       ) : (
         list.map((a) => (
           <ActivityCard

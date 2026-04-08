@@ -5,6 +5,7 @@ import type {
   FeedGenderFilter,
   TimeScope,
 } from "../types/models";
+import { normalizeFeedFilters } from "./normalizeFeedFilters";
 
 function matchesGenderFilter(
   authorGender: ExtendedProfile["gender"],
@@ -36,11 +37,12 @@ export function filterActivitiesForFeed(input: FeedFilterInput): Activity[] {
   const {
     activities,
     skippedActivityIds,
-    feedFilters,
+    feedFilters: rawFilters,
     currentUserId,
     profiles,
     now,
   } = input;
+  const feedFilters = normalizeFeedFilters(rawFilters);
 
   return activities
     .filter((a) => a.authorId !== currentUserId)
