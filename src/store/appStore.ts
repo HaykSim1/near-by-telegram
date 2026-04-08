@@ -17,11 +17,13 @@ import {
   createSeedResponses,
   defaultProfile,
   DEV_USER_ID,
+  profilesForLiveUser,
   SEED_USERS,
 } from "../data/seed";
 import { getTelegramUser } from "../lib/telegram";
 import { formatDistanceKm } from "../lib/distance";
 import { filterActivitiesForFeed } from "../lib/feedFilter";
+import { isDemoDataEnabled } from "../lib/demoData";
 
 function seedProfiles(): Record<number, ExtendedProfile> {
   const profiles: Record<number, ExtendedProfile> = {};
@@ -87,17 +89,19 @@ export interface AppState {
 }
 
 const now = Date.now();
+const bootUser = getTelegramUser();
+const demoData = isDemoDataEnabled();
 
 export const useAppStore = create<AppState>((set, get) => ({
   onboardingComplete: false,
-  telegramUser: getTelegramUser(),
+  telegramUser: bootUser,
   viewerDistrict: "Kentron",
   mainTab: "feed",
   overlay: null,
-  activities: createSeedActivities(now),
-  responses: createSeedResponses(now),
+  activities: demoData ? createSeedActivities(now) : [],
+  responses: demoData ? createSeedResponses(now) : [],
   skippedActivityIds: new Set(),
-  profiles: seedProfiles(),
+  profiles: demoData ? seedProfiles() : profilesForLiveUser(bootUser),
   feedFilters: {
     categories: new Set(),
     maxDistanceKm: 10,

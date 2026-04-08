@@ -3,8 +3,20 @@
 Telegram Mini App MVP: find people nearby for a **specific purpose right now** (coffee, walk, coworking, sport, help, etc.)—**not** a dating app.
 
 - **Stack:** Vite, React 19, TypeScript, Zustand, [`@twa-dev/sdk`](https://github.com/twa-dev/sdk)
-- **Data:** in-memory mock users and activities (refresh resets)
+- **Data:** in-memory only (refresh resets). **Demo seed** (sample people + activities) runs in `vite dev` only; **`npm run build` / production has an empty feed** unless you opt in.
 - **Docs:** product and flows live in [`docs/`](docs/README.md)
+
+### Demo data (env)
+
+| Environment | Default |
+|---------------|---------|
+| `npm run dev` | Demo feed **on** |
+| `npm run build` / Vercel production | Demo feed **off** (empty until users post) |
+
+Override:
+
+- `VITE_USE_DEMO_DATA=true` — show demo activities (e.g. staging on Vercel).
+- `VITE_USE_DEMO_DATA=false` — hide demo activities even in dev.
 
 ## Run locally
 

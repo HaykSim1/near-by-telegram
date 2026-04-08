@@ -78,6 +78,20 @@ export function defaultProfile(
   };
 }
 
+/** Profiles for production: current user only (no demo personas). */
+export function profilesForLiveUser(
+  telegram: TelegramUserShape,
+): Record<number, ExtendedProfile> {
+  return {
+    [telegram.id]: {
+      ...defaultProfile(telegram),
+      gender: "unspecified",
+      bio: "",
+      interests: [],
+    },
+  };
+}
+
 function endOfToday(now: number): number {
   const d = new Date(now);
   d.setHours(23, 59, 59, 999);
