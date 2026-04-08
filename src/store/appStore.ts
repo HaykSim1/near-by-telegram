@@ -200,13 +200,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   expireOldActivities: () => {
     const t = Date.now();
-    set((s) => ({
+    const s = get();
+    const needsUpdate = s.activities.some(
+      (a) => a.status === "active" && a.expiresAt < t,
+    );
+    if (!needsUpdate) return;
+    set({
       activities: s.activities.map((a) =>
         a.status === "active" && a.expiresAt < t
           ? { ...a, status: "expired" as const }
           : a,
       ),
-    }));
+    });
   },
 
   getFilteredFeed: () => {
