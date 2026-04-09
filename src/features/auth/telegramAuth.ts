@@ -1,4 +1,5 @@
 import { devDebug } from '@/lib/devDebug'
+import { formatFunctionsInvokeError } from '@/lib/functionsInvokeError'
 import { supabase } from '@/lib/supabase'
 import { getTelegramInitData } from '@/lib/telegram'
 
@@ -93,8 +94,27 @@ export async function signInWithTelegram(): Promise<TelegramAuthResult> {
   )
 
   if (error) {
-    devDebug('auth', { path: 'telegram', edgeError: error.message })
-    return { ok: false, message: error.message }
+    const msg = formatFunctionsInvokeError(error)
+    devDebug('auth', { path: 'telegram', edgeError: msg, errorName: (error as Error).name })
+    // #region agent log
+    fetch('http://127.0.0.1:7326/ingest/b5cf4f5d-28cc-4fe5-a11b-69ab24f7f520', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '94673d' },
+      body: JSON.stringify({
+        sessionId: '94673d',
+        runId: 'edge-invoke',
+        hypothesisId: 'H3',
+        location: 'telegramAuth.ts:invokeError',
+        message: 'functions.invoke failed',
+        data: {
+          errorName: (error as Error).name,
+          formattedLen: msg.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
+    return { ok: false, message: msg }
   }
   if (!data?.email || !data?.password) {
     const msg = data?.detail ?? data?.error ?? 'Telegram auth failed'

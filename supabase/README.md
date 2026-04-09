@@ -19,6 +19,10 @@ supabase functions deploy telegram-auth --no-verify-jwt
 
 Required secrets (auto-provided on hosted Supabase): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 
+**You must set `TELEGRAM_BOT_TOKEN`** for the function (Dashboard → Project Settings → Edge Functions → Secrets, or `supabase secrets set`). Without it, the function returns `server_misconfigured` (HTTP 500).
+
+If the client shows **“Failed to send a request to the Edge Function”**, that usually means the browser could not complete `fetch` (function missing, wrong `VITE_SUPABASE_URL`, ad blocker, or offline). After deploy, a clearer message may include the underlying network error.
+
 ## Manual QA (Telegram)
 
 1. Host the Vite build (HTTPS) and set the URL in BotFather as the Mini App URL.
