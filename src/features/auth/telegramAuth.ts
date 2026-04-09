@@ -4,12 +4,39 @@ import { getTelegramInitData } from '@/lib/telegram'
 
 export type TelegramAuthResult = { ok: true } | { ok: false; message: string }
 
+async function yieldToHost(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 export async function signInWithTelegram(): Promise<TelegramAuthResult> {
-  const bypass = import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
+  const allowDevBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
   const devEmail = import.meta.env.VITE_DEV_EMAIL as string | undefined
   const devPassword = import.meta.env.VITE_DEV_PASSWORD as string | undefined
 
-  if (bypass && devEmail && devPassword) {
+  // #region agent log
+  const w = typeof window !== 'undefined' ? (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp : undefined
+  fetch('http://127.0.0.1:7326/ingest/b5cf4f5d-28cc-4fe5-a11b-69ab24f7f520', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '94673d' },
+    body: JSON.stringify({
+      sessionId: '94673d',
+      runId: 'telegram-signin',
+      hypothesisId: 'H1',
+      location: 'telegramAuth.ts:signInWithTelegram:entry',
+      message: 'auth branch env',
+      data: {
+        viteDev: import.meta.env.DEV,
+        allowDevBypass,
+        hasWindowWebApp: !!w,
+        windowInitLen: w?.initData?.length ?? 0,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
+
+  if (allowDevBypass && devEmail && devPassword) {
     devDebug('auth', { path: 'dev_bypass', emailSet: true })
     const { error } = await supabase.auth.signInWithPassword({
       email: devEmail,
@@ -23,14 +50,37 @@ export async function signInWithTelegram(): Promise<TelegramAuthResult> {
     return { ok: true }
   }
 
-  if (bypass) {
+  if (import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true') {
     devDebug('auth', {
       path: 'dev_bypass_skipped',
-      reason: !devEmail ? 'missing_VITE_DEV_EMAIL' : 'missing_VITE_DEV_PASSWORD',
+      reason: !allowDevBypass
+        ? 'prod_build_ignores_bypass'
+        : !devEmail
+          ? 'missing_VITE_DEV_EMAIL'
+          : 'missing_VITE_DEV_PASSWORD',
     })
   }
 
+  await yieldToHost()
+
   const initData = getTelegramInitData()
+
+  // #region agent log
+  fetch('http://127.0.0.1:7326/ingest/b5cf4f5d-28cc-4fe5-a11b-69ab24f7f520', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '94673d' },
+    body: JSON.stringify({
+      sessionId: '94673d',
+      runId: 'telegram-signin',
+      hypothesisId: 'H2',
+      location: 'telegramAuth.ts:afterYield',
+      message: 'initData snapshot',
+      data: { initDataLen: initData.length },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
+
   if (!initData) {
     devDebug('auth', { path: 'telegram', reason: 'no_initData' })
     return { ok: false, message: 'Open inside Telegram to sign in.' }
