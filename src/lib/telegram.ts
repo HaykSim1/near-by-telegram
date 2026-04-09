@@ -1,8 +1,9 @@
 import WebApp from '@twa-dev/sdk'
 
 export function initTelegramWebApp(): void {
-  WebApp.ready()
-  WebApp.expand()
+  const wa = WebApp as { ready?: unknown; expand?: unknown }
+  if (typeof wa.ready === 'function') (wa.ready as () => void)()
+  if (typeof wa.expand === 'function') (wa.expand as () => void)()
 }
 
 export function getTelegramInitData(): string {

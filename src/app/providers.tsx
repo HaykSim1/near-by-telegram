@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { signInWithTelegram } from '@/features/auth/telegramAuth'
-import { initTelegramWebApp } from '@/lib/telegram'
+import { devDebug } from '@/lib/devDebug'
 import { supabase } from '@/lib/supabase'
+import { initTelegramWebApp } from '@/lib/telegram'
 import { useUserStore } from '@/store/useUserStore'
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -16,6 +17,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       const {
         data: { session },
       } = await supabase.auth.getSession()
+      devDebug('boot', { hadSession: !!session })
       if (session) {
         await fetchProfile()
         if (!cancelled) setBootReady(true)
@@ -23,6 +25,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       }
 
       const result = await signInWithTelegram()
+      devDebug('boot', { signInOk: result.ok, signInMessage: result.ok ? undefined : result.message })
       if (!cancelled && result.ok) {
         await fetchProfile()
       }
