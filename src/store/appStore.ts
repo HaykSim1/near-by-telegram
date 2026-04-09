@@ -27,8 +27,23 @@ import { filterActivitiesForFeed } from "../lib/feedFilter";
 import { defaultFeedFilters, normalizeFeedFilters } from "../lib/normalizeFeedFilters";
 import { isDemoDataEnabled } from "../lib/demoData";
 import { activityToInsertRow, responseToInsertRow } from "../lib/activityDbMapping";
-import { getSupabase } from "../lib/supabaseClient";
+import { getSupabase, isSupabaseConfigured } from "../lib/supabaseClient";
 import { showTelegramAlert } from "../lib/telegram";
+import { upsertRemoteUserSettings } from "../lib/userSettingsSync";
+
+function pushUserSettingsToRemote(get: () => AppState): void {
+  if (!isSupabaseConfigured()) return;
+  const s = get();
+  const me = s.telegramUser.id;
+  const profile = s.profiles[me];
+  if (!profile) return;
+  void upsertRemoteUserSettings({
+    userId: me,
+    onboardingComplete: s.onboardingComplete,
+    viewerDistrict: s.viewerDistrict,
+    profile,
+  });
+}
 
 function seedProfiles(): Record<number, ExtendedProfile> {
   const profiles: Record<number, ExtendedProfile> = {};
@@ -146,8 +161,14 @@ export const useAppStore = create<AppState>()(
   overlay: null,
   ...buildInitialDataSlice(),
 
-  setOnboardingComplete: (v) => set({ onboardingComplete: v }),
-  setViewerDistrict: (district) => set({ viewerDistrict: district }),
+  setOnboardingComplete: (v) => {
+    set({ onboardingComplete: v });
+    pushUserSettingsToRemote(get);
+  },
+  setViewerDistrict: (district) => {
+    set({ viewerDistrict: district });
+    pushUserSettingsToRemote(get);
+  },
   setMainTab: (tab) => set({ mainTab: tab, overlay: null }),
   openCreate: () => set({ overlay: "create" }),
   openDetail: (activityId) => set({ overlay: { type: "detail", activityId } }),
@@ -234,7 +255,12 @@ export const useAppStore = create<AppState>()(
         .from("activities")
         .insert(activityToInsertRow(act, author));
       if (error) {
-        showTelegramAlert(`Could not publish: ${error.message}`);
+        const schemaHint =
+          error.code === "PGRST205" ||
+          String(error.message).includes("schema cache")
+            ? " In Supabase (project matching your VITE_SUPABASE_URL), open SQL Editor and run the blocks in docs/database.md (activities, activity_responses, then user_settings)."
+            : "";
+        showTelegramAlert(`Could not publish: ${error.message}${schemaHint}`);
         return;
       }
     }
@@ -297,15 +323,36 @@ export const useAppStore = create<AppState>()(
         },
       };
     });
+    pushUserSettingsToRemote(get);
   },
 
   expireOldActivities: () => {
     const t = Date.now();
     const s = get();
+    const me = s.telegramUser.id;
     const needsUpdate = s.activities.some(
       (a) => a.status === "active" && a.expiresAt < t,
     );
     if (!needsUpdate) return;
+
+    const supabase = getSupabase();
+    if (supabase) {
+      const myExpiredIds = s.activities
+        .filter(
+          (a) =>
+            a.status === "active" &&
+            a.expiresAt < t &&
+            a.authorId === me,
+        )
+        .map((a) => a.id);
+      if (myExpiredIds.length > 0) {
+        void supabase
+          .from("activities")
+          .update({ status: "expired" })
+          .in("id", myExpiredIds);
+      }
+    }
+
     set({
       activities: s.activities.map((a) =>
         a.status === "active" && a.expiresAt < t
@@ -344,44 +391,59 @@ export const useAppStore = create<AppState>()(
 }),
     {
       name: "nearby-now-v1",
-      version: 1,
+      version: 2,
+      migrate: (persisted) => persisted as PersistedSlice,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state): PersistedSlice => ({
-        onboardingComplete: state.onboardingComplete,
-        viewerDistrict: state.viewerDistrict,
-        activities: state.activities,
-        responses: state.responses,
-        skippedActivityIds: Array.from(state.skippedActivityIds),
-        profiles: state.profiles,
-        feedFilters: {
-          maxDistanceKm: state.feedFilters.maxDistanceKm,
-          gender: state.feedFilters.gender,
-          timeScope: state.feedFilters.timeScope,
-          categories: Array.from(state.feedFilters.categories),
-        },
-        remoteAuthors: state.remoteAuthors,
-      }),
+      partialize: (state): Partial<PersistedSlice> => {
+        const base: Partial<PersistedSlice> = {
+          onboardingComplete: state.onboardingComplete,
+          viewerDistrict: state.viewerDistrict,
+          skippedActivityIds: Array.from(state.skippedActivityIds),
+          feedFilters: {
+            maxDistanceKm: state.feedFilters.maxDistanceKm,
+            gender: state.feedFilters.gender,
+            timeScope: state.feedFilters.timeScope,
+            categories: Array.from(state.feedFilters.categories),
+          },
+        };
+        if (isSupabaseConfigured()) {
+          return base;
+        }
+        return {
+          ...base,
+          activities: state.activities,
+          responses: state.responses,
+          profiles: state.profiles,
+          remoteAuthors: state.remoteAuthors,
+        };
+      },
       merge: (persisted, current) => {
         if (!persisted || typeof persisted !== "object") {
           return current;
         }
         const p = persisted as Partial<PersistedSlice>;
         const feed = p.feedFilters;
+        const remoteMode = isSupabaseConfigured();
         return {
           ...current,
           onboardingComplete: p.onboardingComplete ?? current.onboardingComplete,
           viewerDistrict: p.viewerDistrict ?? current.viewerDistrict,
-          activities: Array.isArray(p.activities)
-            ? p.activities
-            : current.activities,
-          responses: Array.isArray(p.responses)
-            ? p.responses
-            : current.responses,
+          activities: remoteMode
+            ? current.activities
+            : Array.isArray(p.activities)
+              ? p.activities
+              : current.activities,
+          responses: remoteMode
+            ? current.responses
+            : Array.isArray(p.responses)
+              ? p.responses
+              : current.responses,
           skippedActivityIds: new Set(
             Array.isArray(p.skippedActivityIds) ? p.skippedActivityIds : [],
           ),
-          profiles:
-            p.profiles && typeof p.profiles === "object"
+          profiles: remoteMode
+            ? current.profiles
+            : p.profiles && typeof p.profiles === "object"
               ? (p.profiles as Record<number, ExtendedProfile>)
               : current.profiles,
           feedFilters: normalizeFeedFilters({
@@ -392,8 +454,9 @@ export const useAppStore = create<AppState>()(
               Array.isArray(feed?.categories) ? feed.categories : [],
             ),
           }),
-          remoteAuthors:
-            p.remoteAuthors && typeof p.remoteAuthors === "object"
+          remoteAuthors: remoteMode
+            ? current.remoteAuthors
+            : p.remoteAuthors && typeof p.remoteAuthors === "object"
               ? {
                   ...current.remoteAuthors,
                   ...(p.remoteAuthors as Record<string, TelegramUserShape>),

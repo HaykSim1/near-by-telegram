@@ -2,6 +2,13 @@
 
 Without Supabase, activities and responses exist **only on each user’s phone** (`localStorage`). Other people cannot see your posts.
 
+## Provision checklist
+
+1. Create a [Supabase](https://supabase.com) project (note **Project URL** and **anon public** key under **Project Settings → API**).
+2. In **SQL Editor**, run the **activities / activity_responses** block below, then the **user_settings** block.
+3. Enable **Realtime** for `activities` and `activity_responses` (see [Realtime](#realtime-optional-recommended) below).
+4. In your host (e.g. Vercel), set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then **redeploy** the frontend.
+
 To share the feed across all users, create a [Supabase](https://supabase.com) project and add the tables below, then set in Vercel (or `.env`):
 
 - `VITE_SUPABASE_URL` — Project URL  
@@ -59,9 +66,38 @@ create policy "responses_insert" on activity_responses for insert with check (tr
 create policy "responses_update" on activity_responses for update using (true);
 ```
 
+## User settings (cross-device onboarding, district, profile)
+
+Run after the tables above exist:
+
+```sql
+create table user_settings (
+  user_id bigint primary key,
+  onboarding_complete boolean not null default false,
+  viewer_district text not null default 'Kentron',
+  profile jsonb not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+alter table user_settings enable row level security;
+
+create policy "user_settings_select" on user_settings for select using (true);
+create policy "user_settings_insert" on user_settings for insert with check (true);
+create policy "user_settings_update" on user_settings for update using (true);
+```
+
+The app stores `profile` as JSON matching the in-app extended profile (`bio`, `interests`, `gender`, `age`, `privacy`, etc.). Realtime on this table is optional; the client loads it on startup and upserts after changes.
+
 ## Realtime (optional, recommended)
 
-In Supabase: **Database → Replication**, enable replication for `activities` and `activity_responses` so new posts appear for others without refreshing.
+**Checklist**
+
+1. Open your project in the Supabase dashboard.
+2. Go to **Database → Publications** (or **Replication**, depending on dashboard version).
+3. Ensure the `supabase_realtime` publication includes:
+   - `activities`
+   - `activity_responses`
+4. Save. New inserts/updates should then stream to open clients without a full refresh.
 
 ## Security note
 

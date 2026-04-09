@@ -12,6 +12,10 @@ import { ActivityDetailScreen } from "./screens/ActivityDetailScreen";
 import { ResponsesScreen } from "./screens/ResponsesScreen";
 import { isSupabaseConfigured } from "./lib/supabaseClient";
 import { pullRemoteState, subscribeRemoteSync } from "./lib/remoteSync";
+import {
+  fetchRemoteUserSettings,
+  remoteUserSettingsStatePatch,
+} from "./lib/userSettingsSync";
 import { useAppStore } from "./store/appStore";
 import "./App.css";
 
@@ -29,6 +33,41 @@ export default function App() {
       },
     }));
   }, []);
+
+  /** Pull shared feed as soon as localStorage rehydration finishes (not only after onboarding). */
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const run = () => void pullRemoteState();
+    const unsub = useAppStore.persist.onFinishHydration(run);
+    if (useAppStore.persist.hasHydrated()) run();
+    return unsub;
+  }, []);
+
+  const telegramUserId = useAppStore((s) => s.telegramUser.id);
+
+  /** Load server onboarding / profile after localStorage merge so server state is not overwritten by rehydration. */
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const applyRemoteSettings = () => {
+      const u = useAppStore.getState().telegramUser;
+      void fetchRemoteUserSettings(u.id, u).then((remote) => {
+        if (!remote) return;
+        useAppStore.setState((s) => {
+          const patch = remoteUserSettingsStatePatch(u, remote);
+          return {
+            onboardingComplete: patch.onboardingComplete,
+            viewerDistrict: patch.viewerDistrict,
+            profiles: { ...s.profiles, ...patch.profiles },
+          };
+        });
+      });
+    };
+    if (useAppStore.persist.hasHydrated()) {
+      applyRemoteSettings();
+      return;
+    }
+    return useAppStore.persist.onFinishHydration(applyRemoteSettings);
+  }, [telegramUserId]);
 
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
 
