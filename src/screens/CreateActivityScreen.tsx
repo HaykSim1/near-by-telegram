@@ -33,7 +33,7 @@ export function CreateActivityScreen() {
 
   const canPublish = title.trim().length >= 3 && district.trim().length > 0;
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!canPublish) return;
     const payload = buildActivityFromForm({
       authorId: telegramUser.id,
@@ -48,7 +48,7 @@ export function CreateActivityScreen() {
       ageMin: ageMin ? Number(ageMin) : undefined,
       ageMax: ageMax ? Number(ageMax) : undefined,
     });
-    publishActivity(payload);
+    await publishActivity(payload);
   };
 
   return (

@@ -3,7 +3,8 @@
 Telegram Mini App MVP: find people nearby for a **specific purpose right now** (coffee, walk, coworking, sport, help, etc.)—**not** a dating app.
 
 - **Stack:** Vite, React 19, TypeScript, Zustand, [`@twa-dev/sdk`](https://github.com/twa-dev/sdk)
-- **Data:** activities, responses, profile edits, onboarding, and filters are **saved in the device** (`localStorage`) so they survive closing the Mini App. Clearing site data or another device won’t have that state. **Demo seed** runs in `vite dev` only; production starts with an empty feed until people post (unless `VITE_USE_DEMO_DATA=true`).
+- **Data:** activities, responses, profile edits, onboarding, and filters are **saved on the device** (`localStorage`). **Other users only see your activities if you add Supabase** (shared database). See [`docs/database.md`](docs/database.md). Without Supabase, each user has a separate offline-style feed.
+- **Demo seed** runs in `vite dev` only unless `VITE_USE_DEMO_DATA=true`.
 - **Docs:** product and flows live in [`docs/`](docs/README.md)
 
 ### Demo data (env)
@@ -17,6 +18,10 @@ Override:
 
 - `VITE_USE_DEMO_DATA=true` — show demo activities (e.g. staging on Vercel).
 - `VITE_USE_DEMO_DATA=false` — hide demo activities even in dev.
+
+### Shared feed (Supabase)
+
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, run the SQL in [`docs/database.md`](docs/database.md), and enable Realtime on both tables if you want live updates. Omit these vars to keep the app **local-only** (good for demos without a backend).
 
 ## Run locally
 
@@ -33,6 +38,14 @@ Open the printed URL (usually `http://localhost:5173`). Outside Telegram, the ap
 npm run build
 npm run preview
 ```
+
+## Git: add, commit, push (one command)
+
+```bash
+npm run ship -- "your commit message"
+```
+
+If you omit the message, it commits with a dated `chore: update YYYY-MM-DD`. Does nothing if there are no changes. Pushes the **current branch** (`git push`).
 
 ## Try inside Telegram
 

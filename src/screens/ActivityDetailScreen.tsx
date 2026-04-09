@@ -47,12 +47,12 @@ export function ActivityDetailScreen({ activityId }: { activityId: string }) {
     );
   }
 
-  const handleRespond = () => {
+  const handleRespond = async () => {
     if (activity.authorId === telegramUser.id) {
       showTelegramAlert("That’s your own activity.");
       return;
     }
-    const ok = respondToActivity(activityId, note.trim() || undefined);
+    const ok = await respondToActivity(activityId, note.trim() || undefined);
     if (ok) {
       showTelegramAlert("Request sent. They’ll see it under their activity.");
       closeOverlay();

@@ -26,6 +26,9 @@ import { formatDistanceKm } from "../lib/distance";
 import { filterActivitiesForFeed } from "../lib/feedFilter";
 import { defaultFeedFilters, normalizeFeedFilters } from "../lib/normalizeFeedFilters";
 import { isDemoDataEnabled } from "../lib/demoData";
+import { activityToInsertRow, responseToInsertRow } from "../lib/activityDbMapping";
+import { getSupabase } from "../lib/supabaseClient";
+import { showTelegramAlert } from "../lib/telegram";
 
 function seedProfiles(): Record<number, ExtendedProfile> {
   const profiles: Record<number, ExtendedProfile> = {};
@@ -63,6 +66,8 @@ export interface AppState {
   responses: ActivityResponse[];
   skippedActivityIds: Set<string>;
   profiles: Record<number, ExtendedProfile>;
+  /** Authors/responders from Supabase (JSON keys are stringified user ids). */
+  remoteAuthors: Record<string, TelegramUserShape>;
   feedFilters: FeedFilters;
 
   setOnboardingComplete: (v: boolean) => void;
@@ -78,10 +83,10 @@ export interface AppState {
   setFeedTimeScope: (t: TimeScope | "both") => void;
   resetFeedFilters: () => void;
   skipActivity: (activityId: string) => void;
-  respondToActivity: (activityId: string, message?: string) => boolean;
-  publishActivity: (input: Omit<Activity, "id" | "createdAt" | "status">) => void;
-  acceptResponse: (responseId: string) => void;
-  declineResponse: (responseId: string) => void;
+  respondToActivity: (activityId: string, message?: string) => Promise<boolean>;
+  publishActivity: (input: Omit<Activity, "id" | "createdAt" | "status">) => Promise<void>;
+  acceptResponse: (responseId: string) => Promise<void>;
+  declineResponse: (responseId: string) => Promise<void>;
   updateMyProfile: (patch: Partial<ExtendedProfile>) => void;
   expireOldActivities: () => void;
   getFilteredFeed: () => Activity[];
@@ -105,6 +110,7 @@ type PersistedSlice = {
     timeScope: TimeScope | "both";
     categories: ActivityCategory[];
   };
+  remoteAuthors: Record<string, TelegramUserShape>;
 };
 
 const now = Date.now();
@@ -117,6 +123,7 @@ const buildInitialDataSlice = (): Pick<
   | "responses"
   | "profiles"
   | "skippedActivityIds"
+  | "remoteAuthors"
   | "feedFilters"
   | "onboardingComplete"
   | "viewerDistrict"
@@ -127,6 +134,7 @@ const buildInitialDataSlice = (): Pick<
   responses: demoData ? createSeedResponses(now) : [],
   skippedActivityIds: new Set(),
   profiles: demoData ? seedProfiles() : profilesForLiveUser(bootUser),
+  remoteAuthors: {},
   feedFilters: defaultFeedFilters(),
 });
 
@@ -172,9 +180,10 @@ export const useAppStore = create<AppState>()(
       return { skippedActivityIds: next };
     }),
 
-  respondToActivity: (activityId, message) => {
+  respondToActivity: async (activityId, message) => {
     const state = get();
     const me = state.telegramUser.id;
+    const user = state.telegramUser;
     const act = state.activities.find((a) => a.id === activityId);
     if (!act || act.authorId === me) return false;
     const dup = state.responses.some(
@@ -183,29 +192,71 @@ export const useAppStore = create<AppState>()(
     );
     if (dup) return false;
     const r: ActivityResponse = {
-      id: `resp-${Date.now()}`,
+      id: `resp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       activityId,
       fromUserId: me,
       message,
       status: "pending",
       createdAt: Date.now(),
     };
-    set({ responses: [...state.responses, r] });
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase
+        .from("activity_responses")
+        .insert(responseToInsertRow(r, user));
+      if (error) {
+        showTelegramAlert(`Could not send response: ${error.message}`);
+        return false;
+      }
+    }
+    set((s) => ({
+      responses: [...s.responses, r],
+      remoteAuthors: {
+        ...s.remoteAuthors,
+        [String(user.id)]: user,
+      },
+    }));
     return true;
   },
 
-  publishActivity: (input) => {
-    const id = `act-${Date.now()}`;
+  publishActivity: async (input) => {
+    const id = `act-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const act: Activity = {
       ...input,
       id,
       createdAt: Date.now(),
       status: "active",
     };
-    set((s) => ({ activities: [act, ...s.activities], overlay: null }));
+    const author = get().telegramUser;
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase
+        .from("activities")
+        .insert(activityToInsertRow(act, author));
+      if (error) {
+        showTelegramAlert(`Could not publish: ${error.message}`);
+        return;
+      }
+    }
+    set((s) => ({
+      activities: [act, ...s.activities],
+      overlay: null,
+      remoteAuthors: {
+        ...s.remoteAuthors,
+        [String(author.id)]: author,
+      },
+    }));
   },
 
-  acceptResponse: (responseId) => {
+  acceptResponse: async (responseId) => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase
+        .from("activity_responses")
+        .update({ status: "accepted" })
+        .eq("id", responseId);
+      if (error) showTelegramAlert(`Could not accept: ${error.message}`);
+    }
     set((s) => ({
       responses: s.responses.map((r) =>
         r.id === responseId ? { ...r, status: "accepted" as const } : r,
@@ -213,7 +264,15 @@ export const useAppStore = create<AppState>()(
     }));
   },
 
-  declineResponse: (responseId) => {
+  declineResponse: async (responseId) => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabase
+        .from("activity_responses")
+        .update({ status: "declined" })
+        .eq("id", responseId);
+      if (error) showTelegramAlert(`Could not decline: ${error.message}`);
+    }
     set((s) => ({
       responses: s.responses.map((r) =>
         r.id === responseId ? { ...r, status: "declined" as const } : r,
@@ -269,7 +328,10 @@ export const useAppStore = create<AppState>()(
   },
 
   getUser: (id) => {
-    if (id === get().telegramUser.id) return get().telegramUser;
+    const s = get();
+    if (id === s.telegramUser.id) return s.telegramUser;
+    const remote = s.remoteAuthors[String(id)];
+    if (remote) return remote;
     return SEED_USERS[id];
   },
 
@@ -297,6 +359,7 @@ export const useAppStore = create<AppState>()(
           timeScope: state.feedFilters.timeScope,
           categories: Array.from(state.feedFilters.categories),
         },
+        remoteAuthors: state.remoteAuthors,
       }),
       merge: (persisted, current) => {
         if (!persisted || typeof persisted !== "object") {
@@ -329,6 +392,13 @@ export const useAppStore = create<AppState>()(
               Array.isArray(feed?.categories) ? feed.categories : [],
             ),
           }),
+          remoteAuthors:
+            p.remoteAuthors && typeof p.remoteAuthors === "object"
+              ? {
+                  ...current.remoteAuthors,
+                  ...(p.remoteAuthors as Record<string, TelegramUserShape>),
+                }
+              : current.remoteAuthors,
           telegramUser: current.telegramUser,
           mainTab: current.mainTab,
           overlay: null,

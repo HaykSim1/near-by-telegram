@@ -56,10 +56,16 @@ export function ResponsesScreen({ activityId }: { activityId: string }) {
                 </div>
                 {r.status === "pending" ? (
                   <div className="response-row-actions">
-                    <Button variant="secondary" onClick={() => declineResponse(r.id)}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void declineResponse(r.id)}
+                    >
                       Decline
                     </Button>
-                    <Button variant="primary" onClick={() => acceptResponse(r.id)}>
+                    <Button
+                      variant="primary"
+                      onClick={() => void acceptResponse(r.id)}
+                    >
                       Accept
                     </Button>
                   </div>

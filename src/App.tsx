@@ -10,6 +10,8 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { CreateActivityScreen } from "./screens/CreateActivityScreen";
 import { ActivityDetailScreen } from "./screens/ActivityDetailScreen";
 import { ResponsesScreen } from "./screens/ResponsesScreen";
+import { isSupabaseConfigured } from "./lib/supabaseClient";
+import { pullRemoteState, subscribeRemoteSync } from "./lib/remoteSync";
 import { useAppStore } from "./store/appStore";
 import "./App.css";
 
@@ -29,6 +31,12 @@ export default function App() {
   }, []);
 
   const onboardingComplete = useAppStore((s) => s.onboardingComplete);
+
+  useEffect(() => {
+    if (!onboardingComplete || !isSupabaseConfigured()) return;
+    void pullRemoteState();
+    return subscribeRemoteSync();
+  }, [onboardingComplete]);
   const overlay = useAppStore((s) => s.overlay);
   const mainTab = useAppStore((s) => s.mainTab);
 

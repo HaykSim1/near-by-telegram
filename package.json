@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ship": "node scripts/git-ship.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
     "@twa-dev/sdk": "^8.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
